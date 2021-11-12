@@ -63,6 +63,9 @@ const DA = DiskArrays
 const GI = GeoInterface
 const LA = LookupArrays
 
+const RasterStackOrArray = Union{AbstractRasterStack,AbstractRaster}
+const RasterSeriesOrStack = Union{AbstractRasterSeries,AbstractRasterStack}
+
 # DimensionalData documentation urls
 const DDdocs = "https://rafaqz.github.io/DimensionalData.jl/stable/api"
 const DDdimdocs = joinpath(DDdocs, "#DimensionalData.Dimension")
@@ -92,19 +95,34 @@ include("filestack.jl")
 include("stack.jl")
 include("series.jl")
 include("utils.jl")
-include("aggregate.jl")
-include("methods.jl")
 include("read.jl")
-include("sources/grd.jl")
+include("write.jl")
+include("convenience.jl")
 include("show.jl")
 include("plotrecipes.jl")
-include("convenience.jl")
-include("write.jl")
 
+include("methods/aggregate.jl")
+include("methods/aggregate.jl")
+include("methods/categorize.jl")
+include("methods/classify.jl")
+include("methods/crop_extend.jl")
+include("methods/extract.jl")
+include("methods/inpolygon.jl")
+include("methods/mask.jl")
+include("methods/mosaic.jl")
+include("methods/points.jl")
+include("methods/rasterize.jl")
+include("methods/replace_missing.jl")
+include("methods/reproject.jl")
+include("methods/resample.jl")
+include("methods/slice_combine.jl")
+include("methods/trim.jl")
+include("methods/warp.jl")
+
+include("sources/grd.jl")
 include("sources/smap.jl")
 include("sources/ncdatasets.jl")
 include("sources/gdal.jl")
-include("reproject.jl")
 include("sources/rasterdatasources.jl")
 
 end

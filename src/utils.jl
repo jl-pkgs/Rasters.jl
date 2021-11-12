@@ -62,6 +62,7 @@ end
 
 _not_a_dimcol(data, dimcols::DimTuple) = _not_a_dimcol(data, map(DD.dim2key, dimcols))
 _not_a_dimcol(data, dimcols::Tuple{Vararg{<:Pair}}) = _not_a_dimcol(data, map(last, dimcols))
+_not_a_dimcol(data, dimcols::Tuple{}) = ()
 function _not_a_dimcol(data, dimcols::Tuple{Vararg{Symbol}})
     names = Tables.columnnames(data)
     if length(names) == 0
