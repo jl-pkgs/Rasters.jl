@@ -321,7 +321,9 @@ function _mask!(A::AbstractRaster, to::AbstractArray; missingval=missingval(A))
     return A
 end
 
-function _poly_mask(A::AbstractRaster, poly::AbstractVector; order=(XDim, YDim))
+function _poly_mask(A::AbstractRaster, poly::AbstractVector; 
+    order=(XDim, YDim), shape=:polygon
+)
     missingval isa Nothing && _nomissingerror()
     # We need a tuple of all the dims in `order`
     # We also need the index locus to be the center so we are
@@ -347,9 +349,26 @@ function _poly_mask(A::AbstractRaster, poly::AbstractVector; order=(XDim, YDim))
     # Only run inpolygon if the polygon has any point in the bounding box
     if is_crossover
         # Check if theyre in the polygon
-        inpoly = inpolygon(pts, poly)
-        # Reshape the first column of the output matrix to match `A`
-        inpoly = BitArray(reshape(view(inpoly, :, 1), size(A)))
+        if shape === :polygon
+            # Use the first column of the output - the points in the polygon,
+            # and reshape to match `A`
+            inpoly = inpolygon(pts, poly)
+            inpoly = BitArray(reshape(view(inpoly, :, 1), size(A)))
+        elseif shape === :line
+            # Use a tolerance of the average pixel size
+            # This is not the most exact metric to use, but we are limited
+            # to a single `atol` value.
+            meansteps = map(b -> b[2] - b[1], bounds(A)) ./ size(A)
+            averagepixel = max(meansteps...)/2
+            # Join the line with itself reverse, to form a closed polygon.
+            # There must be a better way...
+            poly = vcat(poly, reverse(poly))
+            inpoly = inpolygon(pts, poly; atol=averagepixel)
+            # Take the sedond column of the output - the cells close to the line
+            inpoly = BitArray(reshape(view(inpoly, :, 2), size(A)))
+        else
+            throw(ArgumentError("`shape` keyword must be :line or :polygon")) 
+        end
     else
         inpoly = BitArray(undef, size(A))
         inpoly .= false
@@ -436,15 +455,19 @@ $EXPERIMENTAL
 """
 rasterize(args...; to, kw...) = _rasterize(to, args...; kw...)
 
+function _rasterize(to::DimTuple, args...; kw...)
+    A = Raster(zeros(Union{Float64,Missing}, to))
+    return rasterize!(A, args...; kw...)
+end
+function _rasterize(to::AbstractRaster, args...; kw...)
+    A = similar(to) .= missingval(to)
+    return rasterize!(A, args...; kw...)
+end
 function _rasterize(to::AbstractRasterStack, args...; kw...)
     st = map(to) do A
         similar(A) .= missingval(A)
     end
     return rasterize!(st, args...; kw...)
-end
-function _rasterize(to::AbstractRaster, args...; kw...)
-    A = similar(to) .= missingval(to)
-    return rasterize!(A, args...; kw...)
 end
 
 
@@ -512,21 +535,6 @@ savefig("build/china_rasterized.png")
 
 $EXPERIMENTAL
 """
-function rasterize!(A::AbstractRaster, data;
-    order=_auto_pointcols(A, data),
-    name=first(_not_a_dimcol(data, order)), kw...
-)
-    isdisk(data) && _warn_disk(rasterize)
-    ordered_dims = map(p -> DD.basetypeof(p[1])(p[2]), order)
-    ordered_keys = map(last, order)
-    points = (map(k -> r[k], ordered_keys) for r in Tables.rows(data))
-    if name isa Symbol
-        values = (r[name] for r in Tables.rows(data))
-    elseif value isa Tuple
-        values = (r[first(name)] for r in Tables.rows(data))
-    end
-    return rasterize!(A, points, values; order=ordered_dims, kw...)
-end
 function rasterize!(A::AbstractRaster, points, values;
     order=(XDim, YDim, ZDim), atol=nothing
 )
@@ -545,20 +553,6 @@ function rasterize!(A::AbstractRaster, points, values;
         end
     end
     return A
-end
-function rasterize!(st::AbstractRasterStack, data;
-    point=_auto_pointcols(st, data), name=_not_a_dimcol(data, point), kw...
-)
-    isdisk(data) && _warn_disk(rasterize!)
-    point_dims = map(p ->  DD.basetypeof(p[1])(p[2]), point)
-    order = map(last, point)
-    points = (map(pk -> r[pk], order) for r in Tables.rows(data))
-    if name isa Symbol
-        values = (r[name] for r in Tables.rows(data))
-    elseif name isa Tuple
-        values = (map(vk -> r[vk], name) for r in Tables.rows(data))
-    end
-    return rasterize!(st, points, values; order=point_dims, kw...)
 end
 function rasterize!(st::AbstractRasterStack, points, values;
     order=(XDim, YDim, ZDim), atol=nothing
@@ -581,43 +575,95 @@ function rasterize!(st::AbstractRasterStack, points, values;
     end
     return st
 end
-function rasterize!(st::AbstractRasterStack, poly::GI.AbstractGeometry;
+function rasterize!(A::AbstractRaster, data; kw...)
+    if Tables.istable(data)
+        _rasterize_table!(A, data; kw...)
+    else
+        _rasterize_geometry!(A, data; kw...)
+    end
+end
+
+function _rasterize_table!(A::AbstractRaster, data;
+    order=_auto_pointcols(A, data),
+    name=nothing, kw...
+)
+    istable(data)
+
+    if name isa Nothing 
+        name = first(_not_a_dimcol(data, order))
+    end
+    isdisk(data) && _warn_disk(rasterize)
+    ordered_dims = map(p -> DD.basetypeof(p[1])(p[2]), order)
+    ordered_keys = map(last, order)
+    points = (map(k -> r[k], ordered_keys) for r in Tables.rows(data))
+    if name isa Symbol
+        values = (r[name] for r in Tables.rows(data))
+    elseif value isa Tuple
+        values = (r[first(name)] for r in Tables.rows(data))
+    end
+    return rasterize!(A, points, values; order=ordered_dims, kw...)
+end
+function _rasterize_table!(st::AbstractRasterStack, data;
+    point=_auto_pointcols(st, data), name=_not_a_dimcol(data, point), kw...
+)
+    isdisk(data) && _warn_disk(rasterize!)
+    point_dims = map(p ->  DD.basetypeof(p[1])(p[2]), point)
+    order = map(last, point)
+    points = (map(pk -> r[pk], order) for r in Tables.rows(data))
+    if name isa Symbol
+        values = (r[name] for r in Tables.rows(data))
+    elseif name isa Tuple
+        values = (map(vk -> r[vk], name) for r in Tables.rows(data))
+    end
+    return rasterize!(st, points, values; order=point_dims, kw...)
+end
+
+function _rasterize_geometry!(x, coll::GI.AbstractFeatureCollection; kw...)
+    foreach(coll.features) do feature
+        _rasterize_geometry!(x, feature; kw...)
+    end
+    return x
+end
+function _rasterize_geometry!(x, feature::GI.AbstractFeature; kw...)
+    _rasterize_geometry!(x, feature.geometry; kw...)
+end
+function _rasterize_geometry!(x, poly::GI.AbstractGeometry;
     order=(XDim, YDim, ZDim), kw...
 )
-    if bbox_overlaps(st, order, poly)
-        rasterize!(st, GI.coordinates(poly); order, kw...)
+    shape = if poly isa GI.AbstractPolygon
+        :polygon
+    elseif poly isa GI.AbstractLineString
+        :line
+    else
+        throw(ArgumentError("`shape` keyword must be :line or :polygon")) 
     end
-    return st
+
+    if bbox_overlaps(x, order, poly)
+        _rasterize_geometry!(x, GI.coordinates(poly); order, shape, kw...)
+    end
+    return x
 end
-function rasterize!(st::AbstractRasterStack, poly::AbstractVector{<:AbstractVector};
-    fill, order=(XDim, YDim, ZDim)
+function _rasterize_geometry!(st::AbstractRasterStack, poly::AbstractVector{<:AbstractVector};
+    fill, order=(XDim, YDim, ZDim), kw... 
 )
     ordered_dims = dims(st, order)
     B = _poly_mask(first(st), poly; order=ordered_dims)
-    map(st, fill) do A, f
-        broadcast!(A, A, B) do a, b
-            b ? (fill isa Function ? fill(a) : fill) : a
-        end
-    end
+    map((a, f) -> _fill!(A, B, poly, f), st, fill)
     return st
 end
-function rasterize!(A::AbstractRaster, poly::GI.AbstractGeometry;
-    order=(XDim, YDim, ZDim), kw...
-)
-    if bbox_overlaps(A, order, poly)
-        rasterize!(A, GI.coordinates(poly); kw...)
-    end
-    return A
-end
-function rasterize!(A::AbstractRaster, poly::AbstractVector{<:AbstractVector};
-    fill, order=(XDim, YDim, ZDim)
+function _rasterize_geometry!(A::AbstractRaster, poly::AbstractVector{<:AbstractVector};
+    fill, order=(XDim, YDim, ZDim), kw... 
 )
     ordered_dims = dims(A, order)
-    B = _poly_mask(A, poly; order=ordered_dims)
+    B = _poly_mask(A, poly; order=ordered_dims, kw...)
+    _fill!(A, B, poly, fill)
+    return A
+end
+
+function _fill!(A, B, poly, fill)
     broadcast!(A, A, B) do a, b
         b ? (fill isa Function ? fill(a) : fill) : a
     end
-    return A
 end
 
 function bbox_overlaps(x, order, poly)
@@ -671,20 +717,20 @@ This algorithm is very efficient for many points, less so a single point.
 Returns a `Bool` or `BitVector{Bool}
 """
 function inpolygon end
-function inpolygon(point::Union{NTuple{<:Any,At},Pt}, poly::GI.AbstractGeometry)
-    inpolygon(point, GI.coordinates(poly))
+function inpolygon(point::Union{NTuple{<:Any,At},Pt}, poly::GI.AbstractGeometry; kw...)
+    inpolygon(point, GI.coordinates(poly); kw...)
 end
-function inpolygon(points::AbstractVector, poly::GI.AbstractGeometry)
-    inpolygon(points, GI.coordinates(poly))
+function inpolygon(points::AbstractVector, poly::GI.AbstractGeometry; kw...)
+    inpolygon(points, GI.coordinates(poly); kw...)
 end
-inpolygon(point::AbstractVector{<:Real}, poly::AbstractVector) = inpoly([point], poly)
-inpolygon(point::Tuple, poly::AbstractVector) = inpoly([point], poly)
-function inpolygon(points::AbstractVector, poly::AbstractVector)
+inpolygon(point::AbstractVector{<:Real}, poly::AbstractVector; kw...) = inpoly([point], poly; kw...)
+inpolygon(point::Tuple, poly::AbstractVector; kw...) = inpoly([point], poly; kw...)
+function inpolygon(points::AbstractVector, poly::AbstractVector; kw...)
     edges = Matrix{Int}(undef, 0, 2)
     edgenum = 0
     edges, _ = _get_edges(edges, edgenum, poly)
     nodes = collect(flat_nodes(poly))
-    PolygonInbounds.inpoly2(points, nodes, edges)
+    PolygonInbounds.inpoly2(points, nodes, edges; kw...)
 end
 
 function _get_edges(edges, edgenum, poly::AbstractVector{<:GI.AbstractGeometry})
