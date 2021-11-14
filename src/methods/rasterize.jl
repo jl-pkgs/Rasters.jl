@@ -252,48 +252,22 @@ function _rasterize_geometry!(x, poly::GI.AbstractGeometry;
     end
     return x
 end
-function _rasterize_geometry!(st::AbstractRasterStack, poly::AbstractVector{<:AbstractVector};
+function _rasterize_geometry!(x::RasterStackOrArray, poly::AbstractVector{<:AbstractVector};
     fill, order=(XDim, YDim, ZDim), kw... 
 )
     ordered_dims = dims(st, order)
     B = _poly_mask(first(st), poly; order=ordered_dims)
-    map((a, f) -> _fill!(A, B, poly, f), st, fill)
-    return st
-end
-function _rasterize_geometry!(A::AbstractRaster, poly::AbstractVector{<:AbstractVector};
-    fill, order=(XDim, YDim, ZDim), kw... 
-)
-    ordered_dims = dims(A, order)
-    B = _poly_mask(A, poly; order=ordered_dims, kw...)
-    _fill!(A, B, poly, fill)
-    return A
+    return _fill!(x, B, poly, fill)
 end
 
+function _fill!(A::AbstractRasterStack, B, poly, fill)
+    map((a, f) -> _fill!(a, B, poly, f), st, fill)
+    return A
+end
 function _fill!(A, B, poly, fill)
     broadcast!(A, A, B) do a, b
         b ? (fill isa Function ? fill(a) : fill) : a
     end
-end
-
-function bbox_overlaps(x, order, poly)
-    x_bnds = bounds(x, order)
-    p_bbox = GI.bbox(poly)
-    # If there is no bbox available just act as if it
-    # overlaps and let the checks later on sort it out
-    p_bbox isa Nothing && return true
-    bbox_dims = length(p_bbox) ÷ 2
-    p_bnds = [(p_bbox[i], p_bbox[i+bbox_dims]) for i in 1:bbox_dims]
-    
-    isin(bounds, x) = x >= bounds[1] && x <= bounds[2]
-
-    has_overlap = map(x_bnds, p_bnds) do xb, pb
-        # is xb inside pb
-        isin(xb, pb[1]) || isin(xb, pb[2]) || 
-        # or is pb inside xb
-        isin(pb, xb[1]) || isin(pb, xb[2])
-    end |> all
-
-    return has_overlap
 end
 
 function _at_or_contains(d, v, atol)
@@ -308,4 +282,3 @@ function _auto_pointcols(A, data)
     end
     Tuple(DD.basedims(d) => DD.dim2key(d) for d in dims(A) if DD.dim2key(d) in names)
 end
-

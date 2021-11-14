@@ -58,7 +58,6 @@ end
 # # So we always shift the locus while in Projected lookup to avoid errors.
 # _convert_by_lookup(::Type{Mapped}, dim) = convertlookup(Mapped, shiftlocus(Center(), dim))
 # _convert_by_lookup(::Type{Projected}, dim) = shiftlocus(Center(), convertlookup(Projected, dim))
-#
 
 _not_a_dimcol(data, dimcols::DimTuple) = _not_a_dimcol(data, map(DD.dim2key, dimcols))
 _not_a_dimcol(data, dimcols::Tuple{Vararg{<:Pair}}) = _not_a_dimcol(data, map(last, dimcols))
@@ -71,3 +70,10 @@ function _not_a_dimcol(data, dimcols::Tuple{Vararg{Symbol}})
     not_dim_keys = Tuple(k for k in names if !(k in dimcols))
     return  not_dim_keys
 end
+
+_missingval_or_missing(x) = missingval(x) isa Nothing ? missing : missingval(x)
+
+maybe_eps(dims::DimTuple) = map(maybe_eps, dims)
+maybe_eps(dim::Dimension) = maybe_eps(eltype(dim))
+maybe_eps(::Type) = nothing
+maybe_eps(T::Type{<:AbstractFloat}) = _default_atol(T)

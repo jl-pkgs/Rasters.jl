@@ -1,5 +1,5 @@
 """
-    mask(A::AbstractRaster; to, missingval=missingval(A))
+    mask(A:AbstractRaster; to, missingval=missingval(A))
     mask(x; to, order=(XDim, YDim))
 
 Return a new array with values of `A` masked by the missing values of `to`,
@@ -65,16 +65,19 @@ function _mask(st::RasterStack, to::AbstractVector;
     order=dims(st, (XDim, YDim)), kw...
 )
     # Mask it with the polygon
-    B = _poly_mask(first(st), to; order, kw...)
+    B = _shape_mask(first(st), to; order, kw...)
     # Run array masking to=B over all layers
     return map(x -> _mask(x, B; kw...),  st)
 end
 function _mask(A::RasterStackOrArray, poly::GI.AbstractGeometry; kw...)
     _mask(A, GI.coordinates(poly); kw...)
 end
-function _mask(A::AbstractRaster, poly::AbstractVector; order=(X, Y),kw...)
+function _mask(A::RasterStackOrArray, poly::GI.AbstractPolygon; kw...)
+    _mask(A, GI.coordinates(poly); shape=:polygon, kw...)
+end
+function _mask(A::AbstractRaster, poly::AbstractVector; order=(X, Y), kw...)
     # Mask it with the polygon
-    B = _poly_mask(A, poly; order, kw...)
+    B = _shape_mask(A, poly; order, kw...)
     # Then apply it to A. This is much faster when
     # A has additional dimensions to broadcast over.
     return _mask(A, B; kw...)
@@ -166,7 +169,7 @@ function _mask!(A::AbstractRasterStack, poly::GI.AbstractGeometry; kw...)
 end
 # Coordinates mask
 function _mask!(st::RasterStack, to::AbstractVector; order=(X, Y), kw...)
-    B = _poly_mask(first(st), to; order, kw...)
+    B = _shape_mask(first(st), to; order, kw...)
     map(x -> _mask!(x, B; kw...), st)
     return st
 end
@@ -186,72 +189,8 @@ function _mask!(A::AbstractRaster, to::AbstractArray; missingval=missingval(A))
     return A
 end
 
-function _poly_mask(A::AbstractRaster, poly::AbstractVector; 
-    order=(XDim, YDim), shape=:polygon
-)
-    missingval isa Nothing && _nomissingerror()
-    # We need a tuple of all the dims in `order`
-    # We also need the index locus to be the center so we are
-    # only selecting cells more than half inside the polygon
-    shifted_dims = map(d -> DD.maybeshiftlocus(Center(), d), dims(A))
-
-    # Get the array as points
-    pts = vec(collect(points(shifted_dims; order)))
-
-    nodes = flat_nodes(poly)
-    poly_bounds = map(1:length(order)) do i
-        extrema((p[i] for p in nodes))
-    end
-    array_bounds = bounds(dims(A, order))
-    is_crossover = map(poly_bounds, array_bounds) do (p_min, p_max), (a_min, a_max)
-        if p_max >= a_max
-            p_min <= a_max
-        else
-            p_max >= a_min
-        end
-    end |> all
-
-    # Only run inpolygon if the polygon has any point in the bounding box
-    if is_crossover
-        # Check if theyre in the polygon
-        if shape === :polygon
-            # Use the first column of the output - the points in the polygon,
-            # and reshape to match `A`
-            inpoly = inpolygon(pts, poly)
-            inpoly = BitArray(reshape(view(inpoly, :, 1), size(A)))
-        elseif shape === :line
-            # Use a tolerance of the average pixel size
-            # This is not the most exact metric to use, but we are limited
-            # to a single `atol` value.
-            meansteps = map(b -> b[2] - b[1], bounds(A)) ./ size(A)
-            averagepixel = max(meansteps...)/2
-            # Join the line with itself reverse, to form a closed polygon.
-            # There must be a better way...
-            poly = vcat(poly, reverse(poly))
-            inpoly = inpolygon(pts, poly; atol=averagepixel)
-            # Take the sedond column of the output - the cells close to the line
-            inpoly = BitArray(reshape(view(inpoly, :, 2), size(A)))
-        else
-            throw(ArgumentError("`shape` keyword must be :line or :polygon")) 
-        end
-    else
-        inpoly = BitArray(undef, size(A))
-        inpoly .= false
-    end
-
-    # Rebuild a with the masked values
-    return rebuild(A; data=inpoly, missingval=false)
-end
 
 _nomissingerror() = throw(ArgumentError("Array has no `missingval`. Pass a `missingval` keyword compatible with the type, or use `rebuild(A; missingval=somemissingval)` to set it."))
-
-const Pt{T<:Real} = Union{AbstractVector{T},NTuple{<:Any,T}}
-const Poly = AbstractVector{<:Union{NTuple{<:Any,<:Real},AbstractVector{<:Real}}}
-
-function unwrap_point(q::GI.AbstractPoint)
-    (q.x, q.y)
-end
-unwrap_point(q) = q
 
 """
     boolmask(A::AbstractArray, [missingval])

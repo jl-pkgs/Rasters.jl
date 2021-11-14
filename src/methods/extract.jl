@@ -60,7 +60,7 @@ function extract(A::RasterStackOrArray, points::NTuple{<:Any,<:AbstractVector}; 
     extract(A, zip(points...); kw...)
 end
 function extract(A::RasterStackOrArray, points::GI.AbstractGeometry; kw...)
-    extract(A, flat_nodes(GI.coordinates(points)); kw...)
+    extract(A, _flat_nodes(GI.coordinates(points)); kw...)
 end
 function extract(A::RasterStackOrArray, points::AbstractVector{<:Tuple}; kw...)
     extract.(Ref(A), points; kw...)
@@ -111,13 +111,5 @@ end
 
 _layer_keys(A::AbstractRaster, order) = (name(A),)
 _layer_keys(A::AbstractRasterStack, order) = keys(A)
-
-_missingval_or_missing(x) = missingval(x) isa Nothing ? missing : missingval(x)
-
-function flat_nodes(A::AbstractVector{<:AbstractVector{<:AbstractVector}})
-    Iterators.flatten(map(flat_nodes, A))
-end
-flat_nodes(A::AbstractVector{<:AbstractVector{<:AbstractFloat}}) = A
-flat_nodes(A::AbstractVector{<:GI.AbstractGeometry}) = flat_nodes(map(GI.coordinates, A))
 
 _warn_disk(f) = @warn "Disk-based objects may be very slow with $f. User `read` first."

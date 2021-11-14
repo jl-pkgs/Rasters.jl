@@ -50,8 +50,7 @@ crop(x::RasterStackOrArray; to, kw...) = _crop_to(x, to; kw...)
 # crop `A` to values of dims of `to`
 _crop_to(A::RasterStackOrArray, to; kw...) = _crop_to(A, dims(to); kw...)
 function _crop_to(x::RasterStackOrArray, to::DimTuple; atol=maybe_eps(to))
-    # Create selectors for each dimension
-    # `Between` the bounds of the dimension
+    # Take a view over the dim ranges
     _without_mapped_crs(x) do x1
         dimranges = map(to, atol) do d, atol_n
             dx = dims(x1, d)
@@ -61,7 +60,26 @@ function _crop_to(x::RasterStackOrArray, to::DimTuple; atol=maybe_eps(to))
             newindex = fi <= li ? (fi:li) : (li:fi)
             rebuild(dx, newindex)
         end
-        # Take a view of the selectors
+        view(x1, dimranges...)
+    end
+end
+function _crop_to(x::RasterStackOrArray, geom::GI.AbstractGeometry; 
+    order=(XDim, YDim), atol=maybe_eps(to)
+)
+    # Wrap the bounds in dims so we can reorder them
+    wrapped_bounds = map(rebuild, dims(x, order), geom_bounds(geom))
+    ordered_bounds = dims(wrapped_bounds, dims(x))
+    # Take a view over the bounds
+    _without_mapped_crs(x) do x1
+        dimranges = map(ordered_bounds) do d, b 
+            dx = dims(x1, b)
+            l = lookup(dx)
+            selector = sampling(l) isa Intervals ? Contains : Near
+            fi = DD.selectindices(l, selector(first(d)))
+            li = DD.selectindices(l, selector(last(d)))
+            newindex = fi <= li ? (fi:li) : (li:fi)
+            rebuild(dx, newindex)
+        end
         view(x1, dimranges...)
     end
 end
@@ -103,12 +121,51 @@ function extend(l1::RasterStackOrArray, l2::RasterStackOrArray, ls::RasterStackO
 end
 function extend(xs::Union{NamedTuple,Tuple}; to=_subsetdims(_longest, xs))
     # Extend all layers to `to`, by default the _largestdims
-    map(l -> extend(l; to), xs)
+    return map(l -> extend(l; to), xs)
 end
 extend(x::RasterStackOrArray; to=dims(x)) = _extend_to(x, to)
 
 _extend_to(x::RasterStackOrArray, to) = _extend_to(x, dims(to))
-function _extend_to(A::AbstractRaster, to::Tuple)
+function _extend_to(A::AbstractRaster, to::GI.AbstractGeometry; order=(XDim, YDim))
+    all(map(s -> s isa Regular, span(A, order))) || throw(ArgumentError("All dims must have `Regular` span to be extended with a polygon"))
+    wrapped_bounds = map(rebuild, dims(x, order), geom_bounds(geom))
+    ordered_bounds = dims(wrapped_bounds, dims(x))
+    newdims = map(ordered_bounds) do b
+        d = dims(A, b)
+        l = lookup(d)
+        if order(l) isa ForwardOrdered
+            # Use ranges for math because they have TwicePrecision magic
+            lowerrange = if first(b) < first(bounds(l))
+                # Define a range down to the lowest value, but anchored at the existing value
+                first(l):-step(l):first(b)-step(l)
+            else
+                first(l):step(l):first(l)
+            end
+            upperrange = if last(b) > last(bounds(l))
+                last(l):step(l):last(b)+step(l)
+            else
+                last(l):step(l):last(l)
+            end
+            newrange = first(lowerrange):step(l):last(upperrange)
+        elseif order(d) isa ReverseOrdered
+            lowerrange = if first(b) < first(bounds(l))
+                last(l):step(l):first(b)+step(l)
+            else
+                last(l):step(l):last(l)
+            end
+            upperrange = if first(b) > last(bounds(l))
+                first(l):-step(l):first(b)-step(l)
+            else
+                first(l):step(l):first(l)
+            end
+            newrange = last(upperrange):step(l):first(lowerrange)
+            newlookup = rebuild(l; data=newrange)
+            return rebuild(d, newlookup)
+        end
+    end
+    return _extend_to(A, newdims)
+end
+function _extend_to(A::AbstractRaster, to::DimTuple)
     sze = map(length, to)
     T = eltype(A)
     # Create a new extended array
@@ -149,11 +206,6 @@ function _subsetdims(f, layers)
     end
 end
 
-maybe_eps(dims::DimTuple) = map(maybe_eps, dims)
-maybe_eps(dim::Dimension) = maybe_eps(eltype(dim))
-maybe_eps(::Type) = nothing
-maybe_eps(T::Type{<:AbstractFloat}) = _default_atol(T)
-
 # Choose a dimension from either missing dimension
 # (empty Tuple) or a comparison between two 1-Tuples
 _choose(f, ::Tuple{}, ::Tuple{}) = ()
@@ -164,4 +216,3 @@ _choose(f, (a,)::Tuple, (b,)::Tuple) = (f(a, b) ? a : b,)
 # Choose the shortest or longest dimension
 _shortest(a, b) = length(a) <= length(b)
 _longest(a, b) = length(a) >= length(b)
-

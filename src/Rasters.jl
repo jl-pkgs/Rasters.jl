@@ -63,9 +63,6 @@ const DA = DiskArrays
 const GI = GeoInterface
 const LA = LookupArrays
 
-const RasterStackOrArray = Union{AbstractRasterStack,AbstractRaster}
-const RasterSeriesOrStack = Union{AbstractRasterSeries,AbstractRasterStack}
-
 # DimensionalData documentation urls
 const DDdocs = "https://rafaqz.github.io/DimensionalData.jl/stable/api"
 const DDdimdocs = joinpath(DDdocs, "#DimensionalData.Dimension")
@@ -90,10 +87,15 @@ struct SMAPfile end
 include("lookup.jl")
 include("dimensions.jl")
 include("filearray.jl")
-include("array.jl")
 include("filestack.jl")
+include("array.jl")
 include("stack.jl")
 include("series.jl")
+include("polygon_ops.jl")
+
+const RasterStackOrArray = Union{AbstractRasterStack,AbstractRaster}
+const RasterSeriesOrStack = Union{AbstractRasterSeries,AbstractRasterStack}
+
 include("utils.jl")
 include("read.jl")
 include("write.jl")
@@ -103,7 +105,6 @@ include("plotrecipes.jl")
 
 include("methods/aggregate.jl")
 include("methods/aggregate.jl")
-include("methods/categorize.jl")
 include("methods/classify.jl")
 include("methods/crop_extend.jl")
 include("methods/extract.jl")
