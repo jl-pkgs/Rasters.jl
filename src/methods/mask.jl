@@ -240,15 +240,8 @@ function _boolmask(::Type{<:BitArray}, A::AbstractArray, missingval)
     return boolmask!(dest, A, missingval)
 end
 
-function boolmask!(dest::AbstractArray{Bool}, src::AbstractArray, missingval::Missing)
-    broadcast!(a -> !ismissing(a), dest, src)
-end
 function boolmask!(dest::AbstractArray{Bool}, src::AbstractArray, missingval=_missingval_or_missing(src))
-    if missingval isa Number && isnan(missingval)
-        broadcast!(a -> !isnan(a), dest, src)
-    else
-        broadcast!(a -> a !== missingval, parent(dest), parent(src))
-    end
+    broadcast!(a -> !isequal(a, missingval), parent(dest), parent(src))
 end
 
 """
@@ -275,18 +268,12 @@ savefig("build/missingmask_example.png")
 ![missingmask](missingmask_example.png)
 """
 function missingmask end
-function missingmask(A::AbstractRaster)
-    rebuild(A; data=missingmask(A, missingval(A)), missingval=missing, name=:missingmask)
-end
-missingmask(A::AbstractArray, missingval::Nothing) = missingmask(A, missing)
-function missingmask(A::AbstractArray, missingval::Missing=missing)
-    (a -> ismissing(a) ? missing : true).(parent(A))
+missingmask(A::AbstractArray) = missingmask(A, missingval(A))
+function missingmask(A::AbstractRaster, missingval)
+    data = missingmask(parent(A), missingval)
+    read(rebuild(A; data, missingval=missing, name=:missingmask))
 end
 function missingmask(A::AbstractArray, missingval)
-    if missingval isa Number && isnan(missingval)
-        (a -> isnan(a) ? missing : true).(parent(A))
-    else
-        (a -> a === missingval ? missing : true).(parent(A))
-    end
+    broadcast(a -> isequal(a, missingval) ? missing : true, A)
 end
 

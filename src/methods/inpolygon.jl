@@ -14,18 +14,24 @@ This algorithm is very efficient for many points, less so a single point.
 Returns a `Bool` or `BitVector{Bool}
 """
 function inpolygon end
-function inpolygon(point::Union{NTuple{<:Any,At},Pt}, poly::GI.AbstractGeometry; kw...)
-    inpolygon(point, GI.coordinates(poly); kw...)
+function inpolygon(points, poly::GI.AbstractGeometry; kw...)
+    throw(ArgumentError("`inpolygon` works with GeoInterface polygons, but not for $(typeof(poly))"))
 end
-function inpolygon(points::AbstractVector, poly::GI.AbstractGeometry; kw...)
+function inpolygon(points, poly::Union{GI.AbstractPolygon,GI.AbstractMultiPolygon}; kw...)
     inpolygon(points, GI.coordinates(poly); kw...)
 end
-inpolygon(point::AbstractVector{<:Real}, poly::AbstractVector; kw...) = inpoly([point], poly; kw...)
-inpolygon(point::Tuple, poly::AbstractVector; kw...) = inpoly([point], poly; kw...)
+function inpolygon(point::Union{Tuple,AbstractVector{<:Real}}, poly::AbstractVector; kw...)
+    inpolygon([point], poly; kw...)
+end
+function inpolygon(points::GI.AbstractGeometry, poly::AbstractVector; kw...)
+    inpolygon(GI.coordinates(points), poly, kw...)
+end
 function inpolygon(points::AbstractVector, poly::AbstractVector; kw...)
-    edges = Matrix{Int}(undef, 0, 2)
-    edgenum = 0
-    edges, _ = _get_edges(edges, edgenum, poly)
+    inpolygon(collect(_flat_nodes(points)), poly; kw...)
+end
+function inpolygon(points::AbstractVector{<:Union{<:Tuple,<:AbstractVector{<:Real}}}, poly::AbstractVector; kw...)
+    edges, _ = _to_edges(poly)
     nodes = collect(_flat_nodes(poly))
-    PolygonInbounds.inpoly2(points, nodes, edges; kw...)
+    inpoly_matrix = PolygonInbounds.inpoly2(points, nodes, edges; kw...)
+    return view(inpoly_matrix, :, 1)
 end

@@ -1,16 +1,23 @@
-using Rasters, Test, ArchGDAL, Dates, Statistics
-using Rasters.LookupArrays, Rasters.Dimensions
+using Rasters, Test, ArchGDAL, Dates, Statistics, GeoInterface
+using Rasters.LookupArrays, Rasters.Dimensions 
+using GeoInterface: Point, Polygon, LineString
 
 include(joinpath(dirname(pathof(Rasters)), "../test/test_utils.jl"))
 
 A = [missing 7.0f0; 2.0f0 missing]
 ga = Raster(A, (X, Y); missingval=missing)
 ga99 = replace_missing(ga, -9999)
-@test all(ga99 .=== [-9999.0f0 7.0f0; 2.0f0 -9999.0f0])
 gaNaN = replace_missing(ga, NaN32)
-@test all(gaNaN .=== [NaN32 7.0f0; 2.0f0 NaN32])
 gaMi = replace_missing(ga, missing)
-@test all(gaMi .=== ga)
+
+@testset "replace_missing" begin
+    @test all(isequal.(ga99, [-9999.0f0 7.0f0; 2.0f0 -9999.0f0]))
+    @test missingval(ga99) === -9999
+    @test all(isequal.(gaNaN, [NaN32 7.0f0; 2.0f0 NaN32]))
+    @test missingval(gaNaN) === NaN32
+    @test all(isequal.(gaMi, ga))
+    @test missingval(gaMi) === missing
+end
 
 @testset "boolmask" begin
     @test boolmask(Array, ga) == [false true; true false]
@@ -137,6 +144,25 @@ end
                                                 [0.0     0.0     missing
                                                  0.0     0.0     missing    
                                                  missing missing missing], dims=3))
+end
+
+@testset "inpolygon" begin
+    polygon = [[-20.0, 30.0],
+               [-20.0, 10.0],
+               [0.0, 10.0],
+               [0.0, 30.0],
+               [-20.0, 30.0]]
+    gi_polygon = Polygon([polygon])
+    poly = gi_polygon
+    for poly in (polygon, gi_polygon)
+        @test inpolygon((-10.0, 20.0), poly) == [true]
+        @test inpolygon((-19.0, 29.0), poly) == [true]
+        @test inpolygon((-30.0, 20.0), poly) == [false]
+        @test inpolygon([(-10.0, 20.0), (-30.0, 40.0)], poly) == [true, false]
+        @test inpolygon(Point([-20.0, 50.0]), poly) == [false]
+        @test inpolygon(LineString([[-10.0, 20.0], [-30.0, 40.0]]), poly) == [true, false]
+        @test inpolygon(Polygon([[[-10.0, 20.0], [-30.0, 40.0]]]), poly) == [true, false]
+    end
 end
 
 @testset "resample" begin

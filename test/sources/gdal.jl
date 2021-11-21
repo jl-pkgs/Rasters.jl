@@ -1,7 +1,7 @@
 using Rasters, Test, Statistics, Dates, Plots, DiskArrays, RasterDataSources
 using Rasters.LookupArrays, Rasters.Dimensions
 import ArchGDAL, NCDatasets
-using Rasters: FileArray, GDALfile
+using Rasters: FileArray, GDALfile, crs
 
 include(joinpath(dirname(pathof(Rasters)), "../test/test_utils.jl"))
 url = "https://download.osgeo.org/geotiff/samples/gdal_eg/cea.tif"
@@ -112,7 +112,7 @@ gdalpath = maybedownload(url)
         end
 
         @testset "trim, crop, extend" begin
-            a = replace_missing(gdalarray, zero(eltype(gdalarray)))
+            a = read(replace_missing(gdalarray, zero(eltype(gdalarray))))
             a[X(1:100)] .= missingval(a)
             trimmed = trim(a)
             @test size(trimmed) == (414, 514, 1)
@@ -124,7 +124,7 @@ gdalpath = maybedownload(url)
         end
 
         @testset "mask and mask! to disk" begin
-            msk = replace_missing(gdalarray, missing)
+            msk = read(replace_missing(gdalarray, missing))
             msk[X(1:100), Y([1, 5, 95])] .= missingval(msk)
             @test !any(gdalarray[X(1:100)] .=== missingval(msk))
             masked = mask(gdalarray; to=msk)

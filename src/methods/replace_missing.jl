@@ -18,17 +18,22 @@ missing
 """
 replace_missing(x; missingval=missing) = replace_missing(x, missingval)
 function replace_missing(A::AbstractRaster{T}, missingval::MV=missing) where {T,MV}
-    missingval = convert(promote_type(T, MV), missingval)
-    newdata = if ismissing(Rasters.missingval(A))
-        if ismissing(missingval)
-            copy(parent(read(A)))
-        else
-            collect(Missings.replace(parent(A), missingval))
+    MT = promote_type(T, MV)
+    mv = convert(MT, missingval)
+    repmissing(x) = isequal(x, Rasters.missingval(A)) ? mv : x
+    # Disk-backed arrays need to be lazy, memory-backed don't.
+    # But in both cases we make sure we return an array with the missingval
+    # in the eltype, even if there are no missing values in the array.
+    if isdisk(A)
+        data = repmissing.(parent(A))
+        if missingval isa Missing
+            MT = promote_type(eltype(data), MV)
+            data = MissingDiskArray(MT, data)
         end
     else
-        replace(parent(A), Rasters.missingval(A) => missingval)
+        data = similar(parent(A), MT)
+        data .= repmissing.(parent(A))
     end
-    return rebuild(A; data=newdata, missingval=missingval)
+    return rebuild(A; data, missingval)
 end
 replace_missing(x::RasterSeriesOrStack, args...) = map(A -> replace_missing(A, args...), x)
-

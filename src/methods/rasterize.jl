@@ -196,8 +196,6 @@ function _rasterize_table!(A::AbstractRaster, data;
     order=_auto_pointcols(A, data),
     name=nothing, kw...
 )
-    istable(data)
-
     if name isa Nothing 
         name = first(_not_a_dimcol(data, order))
     end
@@ -255,8 +253,8 @@ end
 function _rasterize_geometry!(x::RasterStackOrArray, poly::AbstractVector{<:AbstractVector};
     fill, order=(XDim, YDim, ZDim), kw... 
 )
-    ordered_dims = dims(st, order)
-    B = _poly_mask(first(st), poly; order=ordered_dims)
+    ordered_dims = dims(x, order)
+    B = _poly_mask(x, poly; order=ordered_dims)
     return _fill!(x, B, poly, fill)
 end
 

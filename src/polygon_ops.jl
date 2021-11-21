@@ -6,64 +6,81 @@ function unwrap_point(q::GI.AbstractPoint)
 end
 unwrap_point(q) = q
 
-
-function _shape_mask(A::AbstractRaster, geom::AbstractVector; shape=:polygon, kw...)
-    if shape === :polygon
-        _poly_mask!(A, geom; kw...)
-    elseif shape == :line
-        _line_mask!(A, geom; kw...)
+function _shape_mask(A::AbstractRaster, geom::AbstractVector; 
+    shape=:polygon, order=(XDim, YDim), kw...
+)
+    gbounds = geom_bounds(geom, order)
+    abounds = bounds(dims(A, order))
+    missingval(A) isa Nothing && _nomissingerror()
+    # Only mask if the gemoetry bounding box overlaps the array bounding box
+    mask = if bounds_overlap(gbounds, abounds)
+        if shape === :polygon
+            _poly_mask(A, geom; order, kw...)
+        elseif shape === :line
+            _line_mask(A, geom; order, kw...)
+        elseif shape === :point
+            _point_mask(A, geom; order, kw...)
+        else
+            throw(ArgumentError("shape must be :line or :polygon"))
+        end
     else
-        throw(ArgumentError("shape must be :line or :polygon"))
+        # Otherwise return all false
+        falses(size(A))
     end
+    # Rebuild a with the masked values
+    return rebuild(A; data=mask, missingval=false)
 end
 
-function _poly_mask(A::AbstractRaster, poly::AbstractVector; order=(XDim, YDim))
-    missingval isa Nothing && _nomissingerror()
+function _poly_mask(A::AbstractRaster, poly::AbstractVector; order)
     # We need a tuple of all the dims in `order`
     # We also need the index locus to be the center so we are
     # only selecting cells more than half inside the polygon
     shifted_dims = map(d -> DD.maybeshiftlocus(Center(), d), dims(A))
+    # Get the array as points
+    pts = vec(collect(points(shifted_dims; order)))
+    # Use the first column of the output - the points in the polygon,
+    # and reshape to match `A`
+    inpoly = inpolygon(pts, poly)
+    return BitArray(reshape(view(inpoly, :, 1), size(A)))
+end
 
-    poly_bounds = geom_bounds(poly, order)
-    array_bounds = bounds(dims(A, order))
-
-    # Only run inpolygon if the polygon bounding box overlaps the array bounding box
-    if bounds_overlap(poly_bounds, array_bounds)
-        # Get the array as points
-        pts = vec(collect(points(shifted_dims; order)))
-        if shape === :polygon
-            # Use the first column of the output - the points in the polygon,
-            # and reshape to match `A`
-            inpoly = inpolygon(pts, poly)
-            inpoly = BitArray(reshape(view(inpoly, :, 1), size(A)))
-        elseif shape === :line
-            # Use a tolerance of the average pixel size
-            # This is not the most exact metric to use, but we are limited
-            # to a single `atol` value.
-            meansteps = map(b -> b[2] - b[1], bounds(A)) ./ size(A)
-            averagepixel = max(meansteps...)/2
-            # Join the line with itself reverse, to form a closed polygon.
-            # There must be a better way...
-            poly = vcat(poly, reverse(poly))
-            inpoly = inpolygon(pts, poly; atol=averagepixel)
-            # Take the sedond column of the output - the cells close to the line
-            inpoly = BitArray(reshape(view(inpoly, :, 2), size(A)))
-        elseif shape === :points
-
-        else
-            throw(ArgumentError("`shape` keyword must be :line or :polygon")) 
-        end
-    else
-        inpoly = BitArray(undef, size(A))
-        inpoly .= false
+function _line_mask(A::AbstractRaster, lines::AbstractVector; order)
+    # Use a tolerance of the average pixel size
+    # This is not the most exact metric to use, but we are limited
+    # to a single `atol` value.
+    # meansteps = map(b -> b[2] - b[1], bounds(A)) ./ size(A)
+    # averagepixel = max(meansteps...)/2
+    # # Join the line with itself reverse, to form a closed polygon.
+    # # There must be a better way...
+    # poly = vcat(poly, reverse(poly))
+    # inpoly = inpolygon(pts, poly; atol=averagepixel)
+    # # Take the sedond column of the output - the cells close to the line
+    # return BitArray(reshape(view(inpoly, :, 2), size(A)))
+    B = falses(size(A))
+    P = NamedTuple{(:x,:y)}
+    for i in eachindex(lines)[1:end-1]
+        start = ntuple(n -> lines[i][n], length(order)) 
+        stop = ntuple(n -> lines[i + 1][n], length(order)) 
+        line = Line(P(start), P(stop))
+        _burn_line!(B, line, bounds(A))
     end
+    return B
+end
 
-    # Rebuild a with the masked values
-    return rebuild(A; data=inpoly, missingval=false)
+function _point_mask(A::AbstractRaster, points::AbstractVector; order)
+    # Just find which pixels contian the points, and set them to true
+    data = falses(size(A))
+    for point in points 
+        selectors = map(dims(A, order), ntuple(i -> i, length(order))) do d, i
+            rebuild(d, Contains(point[i]))
+        end
+        I = selectindices(A, selectors...)
+        data[I...] = true
+    end
 end
 
 function geom_bounds(poly, order)
-    nodes = flat_nodes(poly)
+    nodes = _flat_nodes(poly)
     poly_bounds = map(1:length(order)) do i
         extrema((p[i] for p in nodes))
     end
@@ -93,24 +110,31 @@ function bbox_overlaps(x, order, poly)
 end
 
 function _flat_nodes(A::AbstractVector{<:AbstractVector{<:AbstractVector}})
-    Iterators.flatten(map(flat_nodes, A))
+    Iterators.flatten(map(_flat_nodes, A))
 end
 _flat_nodes(A::AbstractVector{<:AbstractVector{<:AbstractFloat}}) = A
+_flat_nodes(A::AbstractVector{<:Tuple}) = A
 _flat_nodes(A::AbstractVector{<:GI.AbstractGeometry}) = _flat_nodes(map(GI.coordinates, A))
 
 
-function _get_edges(edges, edgenum, poly::AbstractVector{<:GI.AbstractGeometry})
+function _to_edges(poly)
+    edgenum = 0
+    edges = Matrix{Int}(undef, 0, 2)
+    _to_edges!(edges, edgenum, poly)
+end
+
+function _to_edges!(edges, edgenum, poly::AbstractVector{<:GI.AbstractGeometry})
     foldl(poly; init=(edges, edgenum)) do (e, en), p
-        _get_edges(e, en, GI.coordinates(p))
+        _to_edges!(e, en, GI.coordinates(p))
     end
 end
-function _get_edges(edges, edgenum, poly::AbstractVector{<:AbstractVector})
+function _to_edges!(edges, edgenum, poly::AbstractVector{<:AbstractVector})
     foldl(poly; init=(edges, edgenum)) do (e, en), p
-        _get_edges(e, en, p)
+        _to_edges!(e, en, p)
     end
 end
 # Analyse a single polygon
-function _get_edges(edges, edgenum, poly::AbstractVector{<:Union{<:NTuple{<:Any,T},<:AbstractVector{T}}}) where T<:Real
+function _to_edges!(edges, edgenum, poly::AbstractVector{<:Union{<:NTuple{<:Any,T},<:AbstractVector{T}}}) where T<:Real
     newedges = Matrix{Int}(undef, length(poly), 2)
     for i in eachindex(poly)[1:end-1]
         newedges[i, 1] = i + edgenum
@@ -123,47 +147,12 @@ function _get_edges(edges, edgenum, poly::AbstractVector{<:Union{<:NTuple{<:Any,
     return edges, edgenum + length(poly)
 end
 
-# function intersection(l1::Line{T}, l2::Line{T}) where T<:Real
-#     a1 = l1.e[1] - l1.s[1]
-#     b1 = l1.s.[2] - l1.e[2]
-#     c1 = a1 * l1.s[2] + b1 * l1.s[1]
-
-#     a2 = l2.e[1] - l2.s[1]
-#     b2 = l2.s[2] - l2.e[2]
-#     c2 = a2 * l2.s[2] + b2 * l2.s[1]
-
-#     Δ = a1 * b2 - a2 * b1
-#     # If lines are parallel, intersection point will contain infinite values
-#     return ((b2 * c1 - b1 * c2) / Δ, (a1 * c2 - a2 * c1) / Δ)
-# end
-
-# function _burn_line!(A, linestring)
-#     lastpoint = first(linestring)
-#     column_num = 1  
-#     for point in line[2:end] 
-#         if isinside(A, point)
-
-#         end
-#         line = Line(lastpoint, point)
-#         column_line = Line()
-#         crossing = intersection(line, column_line)
-#         i = DD.selectindices(dim1, Contains(crossing[1]))
-#         ifelse(column_num > 0, column_num)
-#     end
-# end
-
-
-struct Point{T}
-    x::T
-    y::T
-end
-
 struct Line{T}
     start::T
     stop::T
 end
 # All pixels sizes are regular, so we can take shortcuts
-function burnline!(A, line, bounds)
+function _burn_line!(A, line, bounds)
     x_scale = (bounds[1][2] - bounds[1][1]) / size(A, 2)
     y_scale = (bounds[2][2] - bounds[2][1]) / size(A, 1)
     raw_x_offset = bounds[1][1]
@@ -226,17 +215,21 @@ end
 # heatmap(300:20:2300, 150:10:1150, A; aspect_ratio=2)
 # plot!(reverse.(points))
 
-using BenchmarkTools
-A = falses(1100, 1100)
-bounds = (100.0, 1200.0), (200.0, 2400.0)
-points = [(rand(100.0:0.0001:1200.0), rand(200.0:0.0002:2400.0)) for i in 1:10_000]
-lines = [Line(Point(points[i]...), Point(points[i+1]...)) for i in 1:length(points)-1]
-@btime Threads.@spawn for line in lines 
-    burnline!(A, line, bounds);
-end
-@btime for line in lines 
-    burnline!(A, line, bounds);
-end
-using Polyester
+# using BenchmarkTools, Plots
+# A = falses(1100, 1100)
+# bounds = (100.0, 1200.0), (200.0, 2400.0)
+# points = [(rand(100.0:0.0001:1200.0), rand(200.0:0.0002:2400.0)) for i in 1:1000_000]
+# lines = [Line(Point(points[i]...), Point(points[i+1]...)) for i in 1:length(points)-1]
+# @time for line in lines 
+#     burnline!(A, line, bounds);
+# end
+# heatmap(A)
 
-heatmap(A)
+# using Polyester, ProfileView
+# @time for line in lines 
+#     burnline!(A, line, bounds);
+# end
+# @btime @batch minbatch=5000 for line in lines 
+#     burnline!(A, line, bounds)
+# end
+
