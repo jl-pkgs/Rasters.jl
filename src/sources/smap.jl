@@ -21,7 +21,7 @@ layermissingval(ds::SMAPhdf5) = SMAPMISSING
 layerkeys(ds::SMAPhdf5) = keys(ds)
 filekey(ds::SMAPhdf5, key::Nothing) = first(keys(ds))
 
-function DD.dims(wrapper::SMAPhdf5)
+function DD.dims(wrapper::SMAPhdf5, args...)
     dataset = parent(wrapper)
     proj = read(HDF5.attributes(HDF5.root(dataset)["EASE2_global_projection"]), "grid_mapping_name")
     if proj == "lambert_cylindrical_equal_area"
@@ -55,7 +55,7 @@ function DD.dims(wrapper::SMAPhdf5)
 end
 
 # TODO actually add metadata to the dict
-DD.metadata(wrapper::SMAPhdf5) = Metadata{SMAPfile}(Dict())
+DD.metadata(wrapper::SMAPhdf5) = Metadata{SMAPraster}(Dict())
 
 function DD.layerdims(ds::SMAPhdf5)
     keys = cleankeys(layerkeys(ds))
@@ -98,34 +98,34 @@ function FileArray(var::SMAPvar, filename::AbstractString; key, kw...)
     N = ndims(var)
     eachchunk = DA.eachchunk(var)
     haschunks = DA.haschunks(var)
-    FileArray{SMAPfile,T,N}(filename, SMAPSIZE; key, eachchunk, haschunks, kw...)
+    FileArray{SMAPraster,T,N}(filename, SMAPSIZE; key, eachchunk, haschunks, kw...)
 end
 
-function Base.open(f::Function, A::FileArray{SMAPfile}; kw...)
-    _open(SMAPfile, filename(A); key=key(A), kw...) do var
-        f(RasterDiskArray{SMAPfile}(var)) 
+function Base.open(f::Function, A::FileArray{SMAPraster}; kw...)
+    _open(SMAPraster, filename(A); key=key(A), kw...) do var
+        f(RasterDiskArray{SMAPraster}(var)) 
     end
 end
     
-DA.writeblock!(A::RasterDiskArray{SMAPfile}, v, r::AbstractUnitRange...) = A[r...] = v
+DA.writeblock!(A::RasterDiskArray{SMAPraster}, v, r::AbstractUnitRange...) = A[r...] = v
 
-haslayers(::Type{SMAPfile}) = true
+haslayers(::Type{SMAPraster}) = true
 
 # Stack ########################################################################
 
-@deprecate SMAPstack(args...; kw...) RasterStack(args...; source=SMAPfile, kw...)
+@deprecate SMAPstack(args...; kw...) RasterStack(args...; source=SMAPraster, kw...)
 
-function FileStack{SMAPfile}(ds::SMAPhdf5, filename::AbstractString; write=false, keys)
+function FileStack{SMAPraster}(ds::SMAPhdf5, filename::AbstractString; write=false, keys)
     keys = map(Symbol, keys isa Nothing ? layerkeys(ds) : keys) |> Tuple
     type_size_ec_hc = map(keys) do key
-        var = RasterDiskArray{SMAPfile}(ds[key])
+        var = RasterDiskArray{SMAPraster}(ds[key])
         eltype(var), size(var), DA.eachchunk(var), DA.haschunks(var)
     end
     layertypes = NamedTuple{keys}(map(x->x[1], type_size_ec_hc))
     layersizes = NamedTuple{keys}(map(x->x[2], type_size_ec_hc))
     eachchunk = NamedTuple{keys}(map(x->x[3], type_size_ec_hc))
     haschunks = NamedTuple{keys}(map(x->x[4], type_size_ec_hc))
-    FileStack{SMAPfile}(filename, layertypes, layersizes, eachchunk, haschunks, write)
+    FileStack{SMAPraster}(filename, layertypes, layersizes, eachchunk, haschunks, write)
 end
 
 # Series #######################################################################
@@ -175,13 +175,13 @@ function smapseries(filenames::Vector{<:AbstractString}, dims=nothing; kw...)
         println("Some errors thrown during file load: ")
         println.(errors)
     end
-    RasterSeries(usedpaths, dims; child=RasterStack, duplicate_first=true, kw...)
+    RasterSeries(usedpaths, dims; source=SMAPraster, child=RasterStack, duplicate_first=true, kw...)
 end
 
 
 # Utils ########################################################################
 
-function _open(f, ::Type{SMAPfile}, filepath::AbstractString; key=nothing, kw...)
+function _open(f, ::Type{SMAPraster}, filepath::AbstractString; key=nothing, kw...)
     if key isa Nothing
         h5open(filepath; kw...) do ds
             cleanreturn(f(SMAPhdf5(ds)))

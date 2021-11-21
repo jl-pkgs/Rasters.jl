@@ -1,3 +1,10 @@
+defaultcrs(T::Type, crs) = crs
+defaultcrs(T::Type, ::Nothing) = defaultcrs(T)
+defaultcrs(T::Type) = nothing
+defaultmappedcrs(T::Type, crs) = crs
+defaultmappedcrs(T::Type, ::Nothing) = defaultmappedcrs(T)
+defaultmappedcrs(T::Type) = nothing
+
 filter_ext(path, ext::AbstractString) = filter(fn -> splitext(fn)[2] == ext, readdir(path))
 filter_ext(path, exts::Union{Tuple,AbstractArray}) = 
     filter(fn -> splitext(fn)[2] in exts, readdir(path))
@@ -31,6 +38,7 @@ function maybe_typemin_as_missingval(filename::String, A::AbstractRaster{T}) whe
         A
     end
 end
+
 
 # We often need to convert the locus and the lookup in the same step,
 # as doing it in the wrong order can give errors.

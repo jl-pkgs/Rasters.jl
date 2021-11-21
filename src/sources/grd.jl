@@ -17,7 +17,7 @@ const GRD_DATATYPE_TRANSLATION = Dict{String, DataType}(
     "FLT4S" => Float32,
     "FLT8S" => Float64
 )
-const REVGRDfile_DATATYPE_TRANSLATION =
+const REVGRDraster_DATATYPE_TRANSLATION =
     Dict{DataType, String}(v => k for (k,v) in GRD_DATATYPE_TRANSLATION)
 
 # GRD attributes wrapper. Only used during file load, for dispatch.
@@ -56,7 +56,7 @@ function DD.dims(grd::GRDattrib, crs=nothing, mappedcrs=nothing)
     yspan = (ybounds[1] - ybounds[2]) / ysize
 
     # Not fully implemented yet
-    xy_metadata = Metadata{GRDfile}(Dict())
+    xy_metadata = Metadata{GRDraster}(Dict())
 
     xindex = LinRange(xbounds[1], xbounds[2] - xspan, xsize)
     yindex = LinRange(ybounds[2] + yspan, ybounds[1], ysize)
@@ -89,7 +89,7 @@ end
 DD.name(grd::GRDattrib) = Symbol(get(grd.attrib, "layername", ""))
 
 function DD.metadata(grd::GRDattrib, args...)
-    metadata = Metadata{GRDfile}()
+    metadata = Metadata{GRDraster}()
     for key in ("creator", "created", "history")
         val = get(grd.attrib, key, "")
         if val != ""
@@ -130,7 +130,7 @@ Base.Array(grd::GRDattrib) = _mmapgrd(Array, grd)
 
 # Array ########################################################################
 
-@deprecate GRDarray(args...; kw...) Raster(args...; source=GRDfile, kw...)
+@deprecate GRDarray(args...; kw...) Raster(args...; source=GRDraster, kw...)
 
 function FileArray(grd::GRDattrib, filename=filename(grd); kw...)
     filename = first(splitext(filename))
@@ -139,20 +139,20 @@ function FileArray(grd::GRDattrib, filename=filename(grd); kw...)
     haschunks = DiskArrays.Unchunked()
     T = eltype(grd)
     N = length(size_)
-    FileArray{GRDfile,T,N}(filename, size_; eachchunk, haschunks, kw...)
+    FileArray{GRDraster,T,N}(filename, size_; eachchunk, haschunks, kw...)
 end
 
 # Base methods
 
 """
-    Base.write(filename::AbstractString, ::Type{GRDfile}, s::AbstractRaster)
+    Base.write(filename::AbstractString, ::Type{GRDraster}, s::AbstractRaster)
 
 Write a `Raster` to a .grd file with a .gri header file. 
 The extension of `filename` will be ignored.
 
 Returns `filename`.
 """
-function Base.write(filename::String, ::Type{GRDfile}, A::AbstractRaster)
+function Base.write(filename::String, ::Type{GRDraster}, A::AbstractRaster)
     A = maybe_typemin_as_missingval(filename, A)
     if hasdim(A, Band)
         correctedA = permutedims(A, (X, Y, Band)) |>
@@ -189,7 +189,7 @@ function _write_grd(filename, T, dims, missingval, minvalue, maxvalue, name)
     xmin, xmax = bounds(x)
     ymin, ymax = bounds(y)
     proj = convert(String, convert(ProjString, crs(x)))
-    datatype = REVGRDfile_DATATYPE_TRANSLATION[T]
+    datatype = REVGRDraster_DATATYPE_TRANSLATION[T]
     nodatavalue = missingval
 
     # Metadata: grd file
@@ -222,7 +222,7 @@ function _write_grd(filename, T, dims, missingval, minvalue, maxvalue, name)
 end
 
 
-function create(filename, ::Type{GRDfile}, T::Type, dims::DD.DimTuple; 
+function create(filename, ::Type{GRDraster}, T::Type, dims::DD.DimTuple; 
     name="layer", metadata=nothing, missingval=nothing, keys=(name,),
 )
     # Remove extension
@@ -242,17 +242,17 @@ end
 
 # AbstractRasterStack methods
 
-@deprecate GRDstack(args...; kw...) RasterStack(args...; source=GRDfile, kw...)
+@deprecate GRDstack(args...; kw...) RasterStack(args...; source=GRDraster, kw...)
 
 # Custom `open` because the data and metadata objects are separate
 # Here we _mmapgrd instead of `_open`
-function Base.open(f::Function, A::FileArray{GRDfile}, key...; write=A.write)
-    _mmapgrd(mm -> f(RasterDiskArray{GRDfile}(mm, A.eachchunk, A.haschunks)), A; write)
+function Base.open(f::Function, A::FileArray{GRDraster}, key...; write=A.write)
+    _mmapgrd(mm -> f(RasterDiskArray{GRDraster}(mm, A.eachchunk, A.haschunks)), A; write)
 end
 
-_open(f, ::Type{GRDfile}, filename; key=nothing, write=false) = f(GRDattrib(filename; write))
+_open(f, ::Type{GRDraster}, filename; key=nothing, write=false) = f(GRDattrib(filename; write))
 
-haslayers(::Type{GRDfile}) = false
+haslayers(::Type{GRDraster}) = false
 
 # Utils ########################################################################
 

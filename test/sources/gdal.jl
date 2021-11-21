@@ -1,7 +1,7 @@
 using Rasters, Test, Statistics, Dates, Plots, DiskArrays, RasterDataSources
 using Rasters.LookupArrays, Rasters.Dimensions
 import ArchGDAL, NCDatasets
-using Rasters: FileArray, GDALfile
+using Rasters: FileArray, GDALraster
 
 include(joinpath(dirname(pathof(Rasters)), "../test/test_utils.jl"))
 url = "https://download.osgeo.org/geotiff/samples/gdal_eg/cea.tif"
@@ -71,7 +71,7 @@ gdalpath = maybedownload(url)
     @testset "other fields" begin
         # This file has an inorrect missing value
         @test missingval(gdalarray) == nothing
-        @test metadata(gdalarray) isa Metadata{GDALfile}
+        @test metadata(gdalarray) isa Metadata{GDALraster}
         @test basename(metadata(gdalarray).val[:filepath]) == "cea.tif"
         @test name(gdalarray) == :test
         @test label(gdalarray) == "test"

@@ -1,7 +1,7 @@
 using Rasters, Test, Statistics, Dates, Plots
 using Rasters.LookupArrays, Rasters.Dimensions
 import NCDatasets, ArchGDAL
-using Rasters: FileArray, GRDfile, GDALfile
+using Rasters: FileArray, GRDraster, GDALraster
 
 testpath = joinpath(dirname(pathof(Rasters)), "../test/")
 include(joinpath(testpath, "test_utils.jl"))
@@ -54,7 +54,7 @@ path = stem * ".gri"
 
     @testset "other fields" begin
         @test missingval(grdarray) == -3.4f38
-        @test metadata(grdarray) isa Metadata{GRDfile}
+        @test metadata(grdarray) isa Metadata{GRDraster}
         @test name(grdarray) == Symbol("red:green:blue")
         @test label(grdarray) == "red:green:blue"
         @test units(grdarray) == nothing
@@ -194,7 +194,7 @@ path = stem * ".gri"
         @testset "3d with subset" begin
             geoA = grdarray[1:100, 1:50, 1:2]
             filename = tempname() * ".grd"
-            write(filename, GRDfile, geoA)
+            write(filename, GRDraster, geoA)
             saved = read(Raster(filename))
             @test size(saved) == size(geoA)
             @test refdims(saved) == ()
@@ -232,7 +232,7 @@ path = stem * ".gri"
         @testset "to gdal" begin
             # No Band
             gdalfilename = tempname() * ".tif"
-            write(gdalfilename, GDALfile, grdarray[Band(1)])
+            write(gdalfilename, GDALraster, grdarray[Band(1)])
             gdalarray = Raster(gdalfilename)
             # @test convert(ProjString, crs(gdalarray)) == convert(ProjString, EPSG(4326))
             @test val(dims(gdalarray, X)) ≈ val(dims(grdarray, X))

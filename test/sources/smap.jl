@@ -1,7 +1,7 @@
 using Rasters, Test, Statistics, Dates, Plots
 using Rasters.LookupArrays, Rasters.Dimensions
 import ArchGDAL, NCDatasets, HDF5, CFTime
-using Rasters: layerkeys, SMAPfile
+using Rasters: layerkeys, SMAPraster
 
 testpath = joinpath(dirname(pathof(Rasters)), "../test/")
 include(joinpath(testpath, "test_utils.jl"))
@@ -28,14 +28,19 @@ if isfile(path1) && isfile(path2)
     # We need to wrap HDF5 for SMAP, as h5 file may not be SMAP files
     @testset "SMAPhdf5 wrapper" begin
         HDF5.h5open(path1) do f
-            ds= Rasters.SMAPhdf5(f)
+            ds = Rasters.SMAPhdf5(f)
             @test keys(ds) == layerkeys(ds) == smapkeys
             @test dims(ds) isa Tuple{<:X,<:Y}
         end
     end
 
     @testset "Raster" begin
-        @time smaparray = Raster(path1)
+        @testset "detection" begin
+            @time ncsmaparray = Raster(path1)
+            @test typeof(parent(ncsmaparray)) <: Rasters.FileArray{Rasters.SMAPraster}
+        end
+
+        @time smaparray = Raster(path1; source=Rasters.SMAPraster)
 
         @testset "open" begin
             @test all(open(A -> A[Y=1], smaparray) .=== smaparray[:, 1])
@@ -48,7 +53,7 @@ if isfile(path1) && isfile(path2)
             A2 = zero(A)
             read!(smaparray, A2)
             A3 = zero(A)
-            @time read!(path1, A3);
+            @time read!(path1, A3; source=SMAPraster)
             @test A == A2 == A3
         end
 
@@ -69,7 +74,7 @@ if isfile(path1) && isfile(path2)
         end
 
         @testset "other fields" begin @test missingval(smaparray) == -9999.0
-            @test metadata(smaparray) isa Metadata{SMAPfile}
+            @test metadata(smaparray) isa Metadata{SMAPraster}
             @test name(smaparray) == :baseflow_flux
         end
 
@@ -190,7 +195,7 @@ if isfile(path1) && isfile(path2)
 
     @testset "stack" begin
         @time smapstack = RasterStack(path1)
-        Raster(subset(smapstack, 1:4:20))
+        @time smapstack = RasterStack(path1; source=SMAPraster)
 
         @testset "read" begin
             @time st = read(smapstack);
@@ -200,6 +205,8 @@ if isfile(path1) && isfile(path2)
             st2 = map(a -> a .* 0, st)
             @time read!(smapstack, st2);
             st3 = map(a -> a .* 0, st)
+            @time st = read!(path1, st3; source=SMAPraster);
+            @test all(map((a, b, c) -> all(a .== b .== c), st, st2, st3))
             @time st = read!(path1, st3);
             @test all(map((a, b, c) -> all(a .== b .== c), st, st2, st3))
         end
@@ -218,7 +225,7 @@ if isfile(path1) && isfile(path2)
             dt = DateTime(2016, 1, 1, 22, 30)
             step_ = Hour(3)
             # Currently empty
-            @test metadata(smaparray) isa Metadata{SMAPfile}
+            @test metadata(smaparray) isa Metadata{SMAPraster}
         end
 
         @testset "conversion to RasterStack" begin

@@ -59,9 +59,7 @@ function DD.layers(s::AbstractRasterStack{<:FileStack{<:Any,Keys}}) where Keys
 end
 
 function DD.rebuild(
-    s::AbstractRasterStack, data, dims=dims(s), refdims=refdims(s), 
-    layerdims=DD.layerdims(s), metadata=metadata(s), layermetadata=DD.layermetadata(s),
-    layermissingval=layermissingval(s), 
+    s::AbstractRasterStack, data, dims=dims(s), refdims=refdims(s), layerdims=DD.layerdims(s), metadata=metadata(s), layermetadata=DD.layermetadata(s), layermissingval=layermissingval(s), 
 )
     DD.basetypeof(s)(data, dims, refdims, layerdims, metadata, layermetadata, layermissingval)
 end
@@ -215,13 +213,14 @@ end
 function RasterStack(filename::AbstractString;
     dims=nothing, refdims=(), metadata=nothing, crs=nothing, mappedcrs=nothing,
     layerdims=nothing, layermetadata=nothing, layermissingval=nothing,
-    source=_sourcetype(filename), name=nothing, keys=name, layersfrom=Band,
+    source=nothing, name=nothing, keys=name, layersfrom=Band,
     resize=nothing,
 )
+    source = source isa Nothing ? _sourcetype(filename) : source  
     st = if haslayers(_sourcetype(filename))
         crs = defaultcrs(source, crs)
         mappedcrs = defaultmappedcrs(source, mappedcrs)
-        data, field_kw = _open(filename) do ds
+        data, field_kw = _open(filename; source) do ds
             dims = dims isa Nothing ? DD.dims(ds, crs, mappedcrs) : dims
             refdims = refdims == () || refdims isa Nothing ? () : refdims
             layerdims = layerdims isa Nothing ? DD.layerdims(ds) : layerdims
@@ -306,13 +305,6 @@ end
 Base.convert(::Type{RasterStack}, src::AbstractDimStack) = RasterStack(src)
 
 Raster(stack::RasterStack) = cat(values(stack)...; dims=Band([keys(stack)...]))
-
-defaultcrs(T::Type, crs) = crs
-defaultcrs(T::Type, ::Nothing) = defaultcrs(T)
-defaultcrs(T::Type) = nothing
-defaultmappedcrs(T::Type, crs) = crs
-defaultmappedcrs(T::Type, ::Nothing) = defaultmappedcrs(T)
-defaultmappedcrs(T::Type) = nothing
 
 # Precompile
 precompile(RasterStack, (String,))

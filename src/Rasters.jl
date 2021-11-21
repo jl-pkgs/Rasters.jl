@@ -57,7 +57,6 @@ export crs, mappedcrs, mappedindex, mappedbounds, projectedindex, projectedbound
 export reproject, convertlookup
 export geoarray, stack, series
 
-
 const DD = DimensionalData
 const DA = DiskArrays
 const GI = GeoInterface
@@ -79,10 +78,11 @@ const EXPERIMENTAL = """
     """
 
 # Source dispatch singletons
-struct NCDfile end
-struct GRDfile end
-struct GDALfile end
-struct SMAPfile end
+struct NCDraster end
+struct GRDraster end
+struct GDALraster end
+struct SMAPraster end
+struct HDF5raster end
 
 include("lookup.jl")
 include("dimensions.jl")

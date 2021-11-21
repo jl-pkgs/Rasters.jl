@@ -207,6 +207,7 @@ struct Raster{T,N,D<:Tuple,R<:Tuple,A<:AbstractArray{T,N},Na,Me,Mi} <: AbstractR
     metadata::Me
     missingval::Mi
 end
+# From an array
 function Raster(A::AbstractArray, dims::Tuple;
     refdims=(), name=Symbol(""), metadata=NoMetadata(), missingval=missing,
 )
@@ -215,11 +216,6 @@ end
 function Raster(A::AbstractArray{<:Any,1}, dims::Tuple{<:Dimension,<:Dimension,Vararg}; kw...)
     Raster(reshape(A, map(length, dims)), dims; kw...)
 end
-function Raster(table, dims::Tuple; name, kw...)
-    cols = Tables.getcolumns(table)
-    A = reshape(cols[name], map(length, dims))
-    return Raster(A; name, kw...)
-end
 Raster(A::AbstractArray; dims, kw...) = Raster(A, dims; kw...)
 function Raster(A::AbstractDimArray;
     data=parent(A), dims=dims(A), refdims=refdims(A),
@@ -227,10 +223,18 @@ function Raster(A::AbstractDimArray;
 )
     return Raster(data, dims, refdims, name, metadata, missingval)
 end
-function Raster(filename::AbstractString; name=nothing, key=name, kw...)
-    _open(filename) do ds
-        key = filekey(ds, key)
-        Raster(ds, filename, key; kw...)
+# From a table
+function Raster(table, dims::Tuple; name, kw...)
+    cols = Tables.getcolumns(table)
+    A = reshape(cols[name], map(length, dims))
+    return Raster(A; name, kw...)
+end
+# From a filename
+function Raster(filename::AbstractString; 
+    name=nothing, source=_sourcetype(filename), key=name, kw...
+)
+    _open(filename; source) do ds
+        Raster(ds, filename, filekey(ds, key); kw...)
     end
 end
 function Raster(ds, filename::AbstractString, key=nothing;

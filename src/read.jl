@@ -16,6 +16,8 @@ end
     read!(src::Union{AbstractString,AbstractRaster}, dst::AbstractRaster)
     read!(src::Union{AbstractString,AbstractRasterStack}, dst::AbstractRasterStack)
     read!(scr::AbstractRasterSeries, dst::AbstractRasterSeries)
+    read!(scr::AbstractString, dst::AbstractRaster; source)
+    read!(scr::AbstractString, dst::AbstractRaster; source)
 
 `read!` will copy the data from `src` to the object `dst`. 
 
@@ -32,26 +34,34 @@ function Base.read!(src::AbstractRasterSeries, dst::AbstractRasterSeries)
 end
 
 # Filename methods
-function Base.read!(filename::AbstractString, dst::AbstractRaster)
+function Base.read!(filename::AbstractString, dst::AbstractRaster; kw...)
     src = Raster(filename;
         dims=dims(dst), refdims=refdims(dst), name=name(dst),
-        metadata=metadata(dst), missingval=missingval(dst),
+        metadata=metadata(dst), missingval=missingval(dst), kw...
     )
     read!(src, dst)
 end
-function Base.read!(filenames::Union{NamedTuple,<:AbstractVector{<:AbstractString}}, dst::AbstractRasterStack)
-    _readstack!(filenames, dst)
+function Base.read!(
+    filenames::Union{NamedTuple,<:AbstractVector{<:AbstractString}},
+    dst::AbstractRasterStack; 
+    kw...
+)
+    _readstack!(filenames, dst; kw...)
 end
-function Base.read!(filenames::AbstractString, dst::AbstractRasterStack)
-    _readstack!(filenames, dst)
+function Base.read!(filenames::AbstractString, dst::AbstractRasterStack; kw...)
+    _readstack!(filenames, dst; kw...)
 end
-function Base.read!(filenames::AbstractVector{<:Union{AbstractString,NamedTuple}}, dst::AbstractRasterSeries)
-    map((fn, d) -> read!(fn, d), filenames, dst)
+function Base.read!(
+    filenames::AbstractVector{<:Union{AbstractString,NamedTuple}}, 
+    dst::AbstractRasterSeries;
+    kw...
+)
+    map((fn, d) -> read!(fn, d; kw...), filenames, dst)
     return dst
 end
 
-function _readstack!(filenames, dst)
-    src = RasterStack(filenames;
+function _readstack!(filenames, dst; source=nothing)
+    src = RasterStack(filenames; source,
         dims=dims(dst), refdims=refdims(dst), keys=keys(dst), metadata=metadata(dst),
         layermetadata=DD.layermetadata(dst), layermissingval=layermissingval(dst),
     )

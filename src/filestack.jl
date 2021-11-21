@@ -7,7 +7,7 @@ A wrapper object that holds file pointer and size/chunking
 metadata for a multi-layered stack stored in a single file, 
 typically netcdf or hdf5.
 
-`X` is a backend singleton like `GDALfile`, and `K` is a tuple
+`X` is a backend singleton like `GDALraster`, and `K` is a tuple
 of `Symbol` keys.
 """
 struct FileStack{X,K,F<:AbstractString,T<:NamedTuple{K},S<:NamedTuple{K},EC,HC}

@@ -9,9 +9,9 @@ const GDAL_BAND_ORDER = ForwardOrdered()
 const GDAL_X_LOCUS = Start()
 const GDAL_Y_LOCUS = Start()
 
-# Array ######################################################################## @deprecate GDALarray(args...; kw...) Raster(args...; source=GDALfile, kw...)
+# Array ######################################################################## 
 
-@deprecate GDALarray(args...; kw...) Raster(args...; source=GDALfile, kw...)
+@deprecate GDALarray(args...; kw...) Raster(args...; source=GDALraster, kw...)
 
 function FileArray(raster::AG.RasterDataset{T}, filename; kw...) where {T}
     # Arbitrary array size cuttoff for chunked read/write.
@@ -22,17 +22,17 @@ function FileArray(raster::AG.RasterDataset{T}, filename; kw...) where {T}
     else
         DA.GridChunks(raster, size(raster)), DiskArrays.Unchunked()
     end
-    FileArray{GDALfile,T,3}(filename, size(raster); eachchunk, haschunks, kw...)
+    FileArray{GDALraster,T,3}(filename, size(raster); eachchunk, haschunks, kw...)
 end
 
 cleanreturn(A::AG.RasterDataset) = Array(A)
 
-haslayers(::Type{GDALfile}) = false
+haslayers(::Type{GDALraster}) = false
 
 # AbstractRaster methods
 
 """
-    Base.write(filename::AbstractString, ::Type{GDALfile}, A::AbstractRaster; kw...)
+    Base.write(filename::AbstractString, ::Type{GDALraster}, A::AbstractRaster; kw...)
 
 Write a `Raster` to file using GDAL.
 
@@ -45,7 +45,7 @@ Write a `Raster` to file using GDAL.
 Returns `filename`.
 """
 function Base.write(
-    filename::AbstractString, ::Type{GDALfile}, A::AbstractRaster{T,2}; kw...
+    filename::AbstractString, ::Type{GDALraster}, A::AbstractRaster{T,2}; kw...
 ) where T
     all(hasdim(A, (X, Y))) || error("Array must have Y and X dims")
     map(dims(A, (X, Y))) do d
@@ -58,7 +58,7 @@ function Base.write(
     _gdalwrite(filename, correctedA, nbands; kw...)
 end
 function Base.write(
-    filename::AbstractString, ::Type{GDALfile}, A::AbstractRaster{T,3}, kw...
+    filename::AbstractString, ::Type{GDALraster}, A::AbstractRaster{T,3}, kw...
 ) where T
     all(hasdim(A, (X, Y))) || error("Array must have Y and X dims")
     hasdim(A, Band()) || error("Must have a `Band` dimension to write a 3-dimensional array")
@@ -71,7 +71,7 @@ function Base.write(
     _gdalwrite(filename, correctedA, nbands; kw...)
 end
 
-function create(filename, ::Type{GDALfile}, T::Type, dims::DD.DimTuple; 
+function create(filename, ::Type{GDALraster}, T::Type, dims::DD.DimTuple; 
     missingval=nothing, metadata=nothing, name=nothing, keys=(name,),
     driver=AG.extensiondriver(filename), compress="DEFLATE", chunk=nothing,
 )
@@ -109,7 +109,7 @@ end
 
 # DimensionalData methods for ArchGDAL types ###############################
 
-@deprecate GDALstack(args...; kw...) RasterStack(args...; source=GDALfile, kw...)
+@deprecate GDALstack(args...; kw...) RasterStack(args...; source=GDALraster, kw...)
 
 function DD.dims(raster::AG.RasterDataset, crs=nothing, mappedcrs=nothing)
     gt = try
@@ -122,7 +122,7 @@ function DD.dims(raster::AG.RasterDataset, crs=nothing, mappedcrs=nothing)
     nbands = AG.nraster(raster)
     band = Band(Categorical(1:nbands; order=GDAL_BAND_ORDER))
     crs = crs isa Nothing ? Rasters.crs(raster) : crs
-    xy_metadata = Metadata{GDALfile}()
+    xy_metadata = Metadata{GDALraster}()
 
     # Output Sampled index dims when the transformation is lat/lon alligned,
     # otherwise use Transformed index, with an affine map.
@@ -189,7 +189,7 @@ function DD.metadata(raster::AG.RasterDataset, args...)
     path = first(AG.filelist(raster))
     units = AG.getunittype(band)
     upair = units == "" ? () : (:units=>units,)
-    Metadata{GDALfile}(Dict(:filepath=>path, :scale=>scale, :offset=>offset, upair...))
+    Metadata{GDALraster}(Dict(:filepath=>path, :scale=>scale, :offset=>offset, upair...))
 end
 
 function missingval(raster::AG.RasterDataset, args...)
@@ -229,7 +229,7 @@ end
 
 # Utils ########################################################################
 
-function _open(f, ::Type{GDALfile}, filename::AbstractString; write=false, kw...)
+function _open(f, ::Type{GDALraster}, filename::AbstractString; write=false, kw...)
     if length(filename) > 8 && (filename[1:7] == "http://" || filename[1:8] == "https://")
        filename = "/vsicurl/" * filename
     end

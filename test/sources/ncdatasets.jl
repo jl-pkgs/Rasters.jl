@@ -1,7 +1,7 @@
 using Rasters, DimensionalData, Test, Statistics, Dates, CFTime, Plots
 using Rasters.LookupArrays, Rasters.Dimensions
 import ArchGDAL, NCDatasets
-using Rasters: FileArray, FileStack, NCDfile
+using Rasters: FileArray, FileStack, NCDraster
 include(joinpath(dirname(pathof(Rasters)), "../test/test_utils.jl"))
 
 ncexamples = "https://www.unidata.ucar.edu/software/netcdf/examples/"
@@ -81,7 +81,7 @@ stackkeys = (
 
     @testset "other fields" begin
         @test ismissing(missingval(ncarray))
-        @test metadata(ncarray) isa Metadata{NCDfile}
+        @test metadata(ncarray) isa Metadata{NCDraster}
         @test name(ncarray) == :tos
     end
 
@@ -124,7 +124,7 @@ stackkeys = (
             @test !all(Raster(tempfile)[X(1:100), Y([1, 5, 95])] .=== missing)
             open(Raster(tempfile); write=true) do A
                 mask!(A; to=msk, missingval=missing)
-                # TODO: replace the CFVariable with a FileArray{NCDfile} so this is not required
+                # TODO: replace the CFVariable with a FileArray{NCDraster} so this is not required
                 nothing
             end
             @test all(Raster(tempfile)[X(1:100), Y([1, 5, 95])] .=== missing)
@@ -278,7 +278,7 @@ end
     @testset "load ncstack" begin
         @test ncstack isa RasterStack
         @test ismissing(missingval(ncstack))
-        @test metadata(ncstack) isa Metadata{NCDfile}
+        @test metadata(ncstack) isa Metadata{NCDraster}
         @test dims(ncstack[:abso4]) == dims(ncstack, (X, Y, Ti)) 
         @test refdims(ncstack) == ()
         # Loads child as a regular Raster
@@ -290,9 +290,9 @@ end
         @test keys(ncstack) isa NTuple{131,Symbol}
         @test keys(ncstack) == stackkeys
         @test first(keys(ncstack)) == :abso4
-        @test metadata(ncstack) isa Metadata{NCDfile}
+        @test metadata(ncstack) isa Metadata{NCDraster}
         @test metadata(ncstack)["institution"] == "Max-Planck-Institute for Meteorology"
-        @test metadata(ncstack[:albedo]) isa Metadata{NCDfile}
+        @test metadata(ncstack[:albedo]) isa Metadata{NCDraster}
         @test metadata(ncstack[:albedo])["long_name"] == "surface albedo"
         # Test some DimensionalData.jl tools work
         # Time dim should be reduced to length 1 by mean
