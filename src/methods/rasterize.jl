@@ -12,6 +12,8 @@ into the [`Raster`](@ref) or [`RasterStack`](@ref) `x`.
 - `points`: A `Vector` or nested `Vectors` holding `Vector` or `Tuple` of `Real`
 - `values` A `Vector` of values to be written to a `Raster`, or a Vector of `NamedTupled`
     to write to a `RasterStack`.
+- `values` A `Vector` of values to be written to a `Raster`, or a Vector of `NamedTupled`
+    to write to a `RasterStack`.
 
 # Keywords
 
@@ -23,6 +25,7 @@ These are detected automatically from `A` and `data` where possible.
 - `value`: A `Tuple` of `Symbol` for the keys in the data that provide
     values to add to `A`.
 - `fill`: the value to fill a polygon with, if `data` is a polygon. 
+- `shape`: Force `data` to be treated as `:polygon`, `:line` or `:point`.
 - `atol`: an absolute tolerance for rasterizing to dimensions with `Points` sampling.
 
 # Example
@@ -235,9 +238,11 @@ function _rasterize_geometry!(x, feature::GI.AbstractFeature; kw...)
     _rasterize_geometry!(x, feature.geometry; kw...)
 end
 function _rasterize_geometry!(x, poly::GI.AbstractGeometry;
-    order=(XDim, YDim, ZDim), kw...
+    order=(XDim, YDim, ZDim), shape, kw...
 )
-    shape = if poly isa GI.AbstractPolygon
+    shape = if !isnothing(shape)
+        shape 
+    elseif poly isa GI.AbstractPolygon
         :polygon
     elseif poly isa GI.AbstractLineString
         :line
@@ -245,6 +250,7 @@ function _rasterize_geometry!(x, poly::GI.AbstractGeometry;
         throw(ArgumentError("`shape` keyword must be :line or :polygon")) 
     end
 
+    @show shape
     if bbox_overlaps(x, order, poly)
         _rasterize_geometry!(x, GI.coordinates(poly); order, shape, kw...)
     end
@@ -254,7 +260,7 @@ function _rasterize_geometry!(x::RasterStackOrArray, poly::AbstractVector{<:Abst
     fill, order=(XDim, YDim, ZDim), kw... 
 )
     ordered_dims = dims(x, order)
-    B = _poly_mask(x, poly; order=ordered_dims)
+    B = _shape_mask(x, poly; order=ordered_dims, kw...)
     return _fill!(x, B, poly, fill)
 end
 

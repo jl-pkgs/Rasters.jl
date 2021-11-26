@@ -9,6 +9,7 @@ unwrap_point(q) = q
 function _shape_mask(A::AbstractRaster, geom::AbstractVector; 
     shape=:polygon, order=(XDim, YDim), kw...
 )
+    @show shape
     gbounds = geom_bounds(geom, order)
     abounds = bounds(dims(A, order))
     missingval(A) isa Nothing && _nomissingerror()
@@ -72,7 +73,7 @@ function _point_mask(A::AbstractRaster, points::AbstractVector; order)
     data = falses(size(A))
     for point in points 
         selectors = map(dims(A, order), ntuple(i -> i, length(order))) do d, i
-            rebuild(d, Contains(point[i]))
+            Contains(point[i])
         end
         I = selectindices(A, selectors...)
         data[I...] = true
@@ -160,8 +161,8 @@ function _burn_line!(A, line, bounds)
     # @show raw_x_offset raw_y_offset
     # @show x_scale y_scale
     raw_start, raw_stop = line.start, line.stop # Float
-    start = Point((raw_start.x - raw_x_offset)/x_scale, (raw_start.y - raw_y_offset)/y_scale)
-    stop = Point((raw_stop.x - raw_x_offset)/x_scale, (raw_stop.y - raw_y_offset)/y_scale)
+    start = (; x=(raw_start.x - raw_x_offset)/x_scale, y=(raw_start.y - raw_y_offset)/y_scale)
+    stop = (; x=(raw_stop.x - raw_x_offset)/x_scale, y=(raw_stop.y - raw_y_offset)/y_scale)
     # @show start stop raw_start raw_stop
     x, y = floor(Int, start.x) + 1, floor(Int, start.y) + 1 # Int
     # @show x y
